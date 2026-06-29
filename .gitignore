@@ -1,0 +1,26 @@
+# Secrets/auth
+agent/auth.json
+agent/**/*auth*.json
+agent/**/*token*
+agent/**/*secret*
+agent/**/*credential*
+.env
+.env.*
+
+# Session history / logs / runtime state
+agent/sessions/
+agent/logs/
+agent/cache/
+agent/tmp/
+agent/run-processes.json
+agent/trust.json
+.pi/browser-test/
+
+# Dependencies / generated binaries
+agent/npm/node_modules/
+node_modules/
+agent/bin/
+
+# OS/editor
+.DS_Store
+*.log

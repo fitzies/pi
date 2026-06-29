@@ -1,0 +1,33 @@
+{
+  "lastChangelogVersion": "0.80.2",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.5",
+  "defaultThinkingLevel": "low",
+  "enabledModels": [
+    "openai-codex/gpt-5.5",
+    "anthropic/claude-opus-4-7",
+    "openai-codex/gpt-5.4-mini"
+  ],
+  "enableInstallTelemetry": false,
+  "theme": "gruvbox-dark",
+  "terminal": {
+    "imageWidthCells": 60,
+    "showImages": true,
+    "showTerminalProgress": true
+  },
+  "steeringMode": "one-at-a-time",
+  "followUpMode": "one-at-a-time",
+  "transport": "auto",
+  "hideThinkingBlock": true,
+  "extensions": [
+    "extensions"
+  ],
+  "showHardwareCursor": false,
+  "editorPaddingX": 1,
+  "treeFilterMode": "no-tools",
+  "packages": [
+    "npm:@ff-labs/pi-fff",
+    "npm:@juicesharp/rpiv-btw",
+    "npm:pi-agent-browser-native"
+  ]
+}

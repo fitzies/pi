@@ -1,0 +1,88 @@
+import path from "node:path";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+
+const THEME_PALETTE = ["accent", "mdHeading", "borderAccent", "syntaxKeyword", "accent"] as const;
+
+const TITLE_LINES = [
+  "  ██████╗  ██╗ ",
+  "  ██╔══██╗ ██║ ",
+  "  ██████╔╝ ██║ ",
+  "  ██╔═══╝  ██║ ",
+  "  ██║      ██║ ",
+  "  ╚═╝      ╚═╝ ",
+];
+
+function gradientText(theme: Theme, text: string, phase = 0) {
+  const chars = [...text];
+  const span = Math.max(chars.length - 1, 1);
+  return chars
+    .map((char, index) => {
+      if (char === " ") return char;
+      const paletteIndex = Math.floor((index / span + phase) * (THEME_PALETTE.length - 1)) % THEME_PALETTE.length;
+      return theme.fg(THEME_PALETTE[paletteIndex]!, char);
+    })
+    .join("");
+}
+
+function visibleLength(text: string) {
+  return [...text].length;
+}
+
+function center(text: string, width: number) {
+  const length = visibleLength(text);
+  if (length >= width) return text;
+  return `${" ".repeat(Math.floor((width - length) / 2))}${text}`;
+}
+
+function projectName(cwd: string) {
+  return path.basename(cwd) || "session";
+}
+
+function renderHeader(theme: Theme, width: number, modelId: string, cwd: string) {
+  const subtitle = `${modelId} · ${projectName(cwd)}`;
+  return [
+    "",
+    ...TITLE_LINES.map((line, row) => theme.bold(gradientText(theme, center(line, width), row * 0.025))),
+    theme.bold(theme.fg("accent", center("pi", width))),
+    theme.fg("dim", center(subtitle, width)),
+    "",
+  ];
+}
+
+export default function (pi: ExtensionAPI) {
+  let requestRender: (() => void) | undefined;
+  let currentModelId = "no model selected";
+  let currentCwd = process.cwd();
+
+  function installHeader(ctx: ExtensionContext) {
+    currentCwd = ctx.cwd;
+    currentModelId = ctx.model?.id ?? currentModelId;
+
+    ctx.ui.setHeader((tui) => {
+      requestRender = () => tui.requestRender();
+      return {
+        render(width: number) {
+          return renderHeader(ctx.ui.theme, width, currentModelId, currentCwd);
+        },
+        invalidate() {
+          tui.requestRender();
+        },
+      };
+    });
+  }
+
+  pi.on("session_start", (_event, ctx) => {
+    if (!ctx.hasUI) return;
+    installHeader(ctx);
+  });
+
+  pi.on("model_select", (event) => {
+    currentModelId = event.model.id;
+    requestRender?.();
+  });
+
+  pi.on("session_shutdown", (_event, ctx) => {
+    if (ctx.hasUI) ctx.ui.setHeader(undefined);
+  });
+
+}

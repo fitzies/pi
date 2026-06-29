@@ -1,0 +1,348 @@
+import type { Component } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { fuzzyFilter, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { execFile } from "node:child_process";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
+
+const MAX_FILES = 5000;
+const MAX_VISIBLE = 8;
+
+type OpenTarget = "vim" | "browser" | "preview";
+
+const TARGET_LABELS: Record<OpenTarget, string> = {
+  vim: "Vim",
+  browser: "Browser",
+  preview: "Preview",
+};
+
+function getOpenTargets(file: string): OpenTarget[] {
+  const ext = extname(file).toLowerCase();
+  if (ext === ".html" || ext === ".htm") return ["vim", "browser"];
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf"].includes(ext)) return ["vim", "preview"];
+  return ["vim"];
+}
+
+function run(command: string, args: string[], cwd: string, timeout = 5000): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    execFile(command, args, { cwd, timeout, maxBuffer: 1024 * 1024 * 8 }, (error: any, stdout, stderr) => {
+      resolve({ code: error?.code ?? 0, stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
+    });
+  });
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function stripAtPrefix(filePath: string): string {
+  return filePath.startsWith("@") ? filePath.slice(1) : filePath;
+}
+
+function normalizeToolPath(cwd: string, rawPath: string): string {
+  const cleaned = stripAtPrefix(rawPath);
+  const absPath = resolve(cwd, cleaned);
+  const relPath = relative(cwd, absPath);
+  return relPath && !relPath.startsWith("..") && !isAbsolute(relPath) ? relPath : cleaned;
+}
+
+async function loadFiles(cwd: string): Promise<string[]> {
+  const git = await run("git", ["ls-files", "--cached", "--others", "--exclude-standard"], cwd);
+  if (git.code === 0 && git.stdout.trim()) {
+    return git.stdout.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, MAX_FILES);
+  }
+
+  const fd = await run("fd", ["--type", "f", "--hidden", "--exclude", ".git", "--exclude", "node_modules", "--exclude", "dist", "--exclude", "build"], cwd);
+  if (fd.code === 0 && fd.stdout.trim()) {
+    return fd.stdout.split("\n").map((s) => s.trim()).filter(Boolean).slice(0, MAX_FILES);
+  }
+
+  const find = await run("find", [".", "-type", "f", "-not", "-path", "*/.git/*", "-not", "-path", "*/node_modules/*", "-not", "-path", "*/dist/*", "-not", "-path", "*/build/*"], cwd);
+  return find.stdout
+    .split("\n")
+    .map((s) => s.replace(/^\.\//, "").trim())
+    .filter(Boolean)
+    .slice(0, MAX_FILES);
+}
+
+function rankFiles(files: string[], query: string): string[] {
+  const q = query.trim();
+  if (!q) return files;
+  return fuzzyFilter(files, q, (file) => `${file.split("/").pop()} ${file}`);
+}
+
+function padAnsi(text: string, width: number): string {
+  const current = visibleWidth(text);
+  return current >= width ? text : text + " ".repeat(width - current);
+}
+
+class TargetPicker implements Component {
+  private selected = 0;
+
+  constructor(
+    private readonly file: string,
+    private readonly targets: OpenTarget[],
+    private readonly theme: any,
+    private readonly done: (value: OpenTarget | null) => void,
+  ) {}
+
+  invalidate(): void {}
+
+  render(width: number): string[] {
+    const boxWidth = Math.max(32, Math.min(56, width - 2));
+    const inner = boxWidth - 2;
+    const border = (s: string) => this.theme.fg("accent", s);
+    const dim = (s: string) => this.theme.fg("dim", s);
+    const normal = (s: string) => this.theme.fg("text", s);
+    const selected = (s: string) => this.theme.fg("accent", s);
+    const titleText = ` open ${this.file.split("/").pop() ?? this.file} `;
+    const title = truncateToWidth(titleText, inner, "…", true);
+
+    const lines = [border("╭" + title + "─".repeat(Math.max(0, boxWidth - visibleWidth(title) - 2)) + "╮")];
+    for (let i = 0; i < this.targets.length; i++) {
+      const prefix = i === this.selected ? selected("› ") : "  ";
+      const label = i === this.selected ? selected(TARGET_LABELS[this.targets[i]]) : normal(TARGET_LABELS[this.targets[i]]);
+      lines.push(border("│") + prefix + padAnsi(label, inner - 2) + border("│"));
+    }
+    lines.push(border("╰" + "─".repeat(inner) + "╯"));
+    lines.push(dim("↑/↓ select · enter open · esc cancel"));
+    return lines;
+  }
+
+  handleInput(data: string): void {
+    if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) return this.done(null);
+    if (matchesKey(data, "enter") || matchesKey(data, "return")) return this.done(this.targets[this.selected] ?? null);
+    if (matchesKey(data, "up")) this.selected = Math.max(0, this.selected - 1);
+    if (matchesKey(data, "down")) this.selected = Math.min(this.targets.length - 1, this.selected + 1);
+  }
+}
+
+class FilePicker implements Component {
+  private query = "";
+  private selected = 0;
+  private filtered: string[];
+
+  constructor(
+    private readonly files: string[],
+    private readonly theme: any,
+    private readonly done: (value: string | null) => void,
+  ) {
+    this.filtered = rankFiles(files, "");
+  }
+
+  invalidate(): void {}
+
+  render(width: number): string[] {
+    const boxWidth = Math.max(36, Math.min(80, width - 2));
+    const inner = boxWidth - 2;
+    const border = (s: string) => this.theme.fg("accent", s);
+    const dim = (s: string) => this.theme.fg("dim", s);
+    const muted = (s: string) => this.theme.fg("muted", s);
+    const normal = (s: string) => this.theme.fg("text", s);
+    const selected = (s: string) => this.theme.fg("accent", s);
+
+    const title = " open file ";
+    const top = border("╭" + title + "─".repeat(Math.max(0, boxWidth - visibleWidth(title) - 2)) + "╮");
+    const sep = border("├" + "─".repeat(inner) + "┤");
+    const bottom = border("╰" + "─".repeat(inner) + "╯");
+    const query = this.query || dim("type to search");
+    const lines = [top, border("│") + " " + padAnsi(truncateToWidth(query, inner - 1, "…", true), inner - 1) + border("│"), sep];
+
+    const rows = this.filtered.length ? this.filtered : [];
+    if (!rows.length) {
+      lines.push(border("│") + " " + padAnsi(muted("no matches"), inner - 1) + border("│"));
+    } else {
+      const start = Math.min(
+        Math.max(0, this.selected - MAX_VISIBLE + 1),
+        Math.max(0, rows.length - MAX_VISIBLE),
+      );
+      const visibleRows = rows.slice(start, start + MAX_VISIBLE);
+      for (let i = 0; i < visibleRows.length; i++) {
+        const index = start + i;
+        const prefix = index === this.selected ? selected("› ") : "  ";
+        const path = index === this.selected ? selected(visibleRows[i]) : normal(visibleRows[i]);
+        lines.push(border("│") + prefix + padAnsi(truncateToWidth(path, inner - 2, "…", true), inner - 2) + border("│"));
+      }
+    }
+
+    lines.push(bottom);
+    const count = rows.length ? ` · ${this.selected + 1}/${rows.length}` : "";
+    lines.push(dim(`↑/↓ select${count} · enter open · esc cancel`));
+    return lines;
+  }
+
+  handleInput(data: string): void {
+    if (matchesKey(data, "escape") || matchesKey(data, "ctrl+c")) return this.done(null);
+    if (matchesKey(data, "enter") || matchesKey(data, "return")) return this.done(this.filtered[this.selected] ?? null);
+    if (matchesKey(data, "up")) {
+      this.selected = Math.max(0, this.selected - 1);
+      return;
+    }
+    if (matchesKey(data, "down")) {
+      this.selected = Math.min(Math.max(0, this.filtered.length - 1), this.selected + 1);
+      return;
+    }
+    if (matchesKey(data, "backspace")) {
+      this.query = this.query.slice(0, -1);
+    } else if (data >= " " && data.length <= 4 && !data.includes("\u001b")) {
+      this.query += data;
+    } else {
+      return;
+    }
+    this.filtered = rankFiles(this.files, this.query);
+    this.selected = 0;
+  }
+}
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function openInMacApp(pi: ExtensionAPI, cwd: string, file: string, app?: string): Promise<boolean> {
+  const abs = isAbsolute(file) ? file : join(cwd, file);
+  const args = app ? ["-a", app, abs] : [abs];
+  const result = await pi.exec("open", args, { timeout: 5000 });
+  return result.code === 0;
+}
+
+function surfaceId(s: any): string | undefined {
+  if (!s) return undefined;
+  if (typeof s === "string") return s.startsWith("surface:") ? s : undefined;
+  return s.ref || s.id_ref || s.id || s.surface_ref || s.surface_id || s.surfaceId || s.surface?.ref || s.surface?.id;
+}
+
+function paneSurfaceIds(pane: any): string[] {
+  const raw = pane?.surface_refs || pane?.surfaceRefs || pane?.surfaces || pane?.surface_ids || [];
+  return Array.isArray(raw) ? raw.map(surfaceId).filter(Boolean) : [];
+}
+
+async function callerSurfaceId(pi: ExtensionAPI): Promise<string | undefined> {
+  const r = await pi.exec("cmux", ["identify", "--json"], { timeout: 5000 });
+  try {
+    const parsed = JSON.parse(r.stdout);
+    return surfaceId(parsed.caller) || surfaceId(parsed);
+  } catch { return undefined; }
+}
+
+async function focusedSurfaceId(pi: ExtensionAPI): Promise<string | undefined> {
+  const r = await pi.exec("cmux", ["identify", "--json", "--no-caller"], { timeout: 5000 });
+  try {
+    const parsed = JSON.parse(r.stdout);
+    return surfaceId(parsed.focused) || surfaceId(parsed);
+  } catch { return undefined; }
+}
+
+async function getOrCreateCmuxSurface(pi: ExtensionAPI, workspace: string): Promise<string | undefined> {
+  const current = await callerSurfaceId(pi) || await focusedSurfaceId(pi);
+  const surfacesResult = await pi.exec("cmux", ["--id-format", "both", "list-surfaces", "--workspace", workspace, "--json"], { timeout: 5000 }).catch(() => undefined);
+  try {
+    if (surfacesResult?.code === 0) {
+      const parsed = JSON.parse(surfacesResult.stdout);
+      const surfaces = parsed?.surfaces || parsed?.result?.surfaces;
+      const reusable = Array.isArray(surfaces) ? surfaces.map(surfaceId).find((id: string | undefined) => id && id !== current) : undefined;
+      if (reusable) return reusable;
+    }
+  } catch { /* ignore */ }
+
+  const panesResult = await pi.exec("cmux", ["--id-format", "both", "list-panes", "--workspace", workspace, "--json"], { timeout: 5000 });
+  try {
+    const parsed = JSON.parse(panesResult.stdout);
+    const panes = parsed?.panes || parsed?.result?.panes;
+    if (Array.isArray(panes) && panes.length > 1) {
+      const otherPane = panes.find((pane: any) => !current || !paneSurfaceIds(pane).includes(current));
+      const reusable = paneSurfaceIds(otherPane)[0];
+      if (reusable) return reusable;
+    }
+  } catch { /* ignore */ }
+
+  const split = await pi.exec("cmux", ["--id-format", "both", "new-split", "right", "--workspace", workspace, "--focus", "true"], { timeout: 5000 });
+  return split.stdout.match(/\bsurface:[^\s)]+/)?.[0] || await focusedSurfaceId(pi);
+}
+
+async function openInVim(pi: ExtensionAPI, cwd: string, file: string): Promise<boolean> {
+  const abs = isAbsolute(file) ? file : join(cwd, file);
+  const command = `cd ${shellQuote(dirname(abs))} && vim ${shellQuote(abs)}`;
+
+  const workspace = process.env.CMUX_WORKSPACE_ID;
+  if (workspace) {
+    const surface = await getOrCreateCmuxSurface(pi, workspace);
+    if (surface) {
+      await pi.exec("cmux", ["focus-surface", "--surface", surface], { timeout: 5000 }).catch(() => undefined);
+      const sent = await pi.exec("cmux", ["send", "--surface", surface, `${command}\n`], { timeout: 5000 });
+      if (sent.code === 0) return true;
+    }
+  }
+
+  const result = await pi.exec("bash", ["-lc", `vim ${shellQuote(abs)}`], { cwd: dirname(abs) });
+  return result.code === 0;
+}
+
+export default function (pi: ExtensionAPI): void {
+  const lastEdited = new Set<string>();
+
+  async function pickAndOpen(files: string[], ctx: any, emptyMessage: string): Promise<void> {
+    if (!files.length) {
+      ctx.ui.notify(emptyMessage, "warning");
+      return;
+    }
+
+    const picked = await ctx.ui.custom<string | null>((tui, theme, _keybindings, done) => {
+      const picker = new FilePicker(files, theme, done);
+      return {
+        render: (width) => picker.render(width),
+        invalidate: () => picker.invalidate(),
+        handleInput: (data) => {
+          picker.handleInput(data);
+          tui.requestRender();
+        },
+      };
+    });
+
+    if (!picked) return;
+
+    const targets = getOpenTargets(picked);
+    let target = targets[0];
+    if (targets.length > 1) {
+      const chosen = await ctx.ui.custom<OpenTarget | null>((tui, theme, _keybindings, done) => {
+        const picker = new TargetPicker(picked, targets, theme, done);
+        return {
+          render: (width) => picker.render(width),
+          invalidate: () => picker.invalidate(),
+          handleInput: (data) => {
+            picker.handleInput(data);
+            tui.requestRender();
+          },
+        };
+      });
+      if (!chosen) return;
+      target = chosen;
+    }
+
+    const ok = target === "browser"
+      ? await openInMacApp(pi, ctx.cwd, picked)
+      : target === "preview"
+        ? await openInMacApp(pi, ctx.cwd, picked, "Preview")
+        : await openInVim(pi, ctx.cwd, picked);
+    const opened = relative(ctx.cwd, join(ctx.cwd, picked)) || picked;
+    if (ok) ctx.ui.notify(`Opened ${opened} in ${TARGET_LABELS[target]}`, "info");
+    else ctx.ui.notify(`Failed to open ${picked}`, "error");
+  }
+
+  pi.on("agent_start", async () => {
+    lastEdited.clear();
+  });
+
+  pi.on("tool_result", async (event, ctx) => {
+    if (event.isError) return;
+    if (event.toolName !== "edit" && event.toolName !== "write") return;
+    const input = event.input as { path?: string };
+    if (input.path) lastEdited.add(normalizeToolPath(ctx.cwd, input.path));
+  });
+
+  pi.registerCommand("open", {
+    description: "Fuzzy-pick a project file and open it",
+    handler: async (_args, ctx) => {
+      await pickAndOpen(await loadFiles(ctx.cwd), ctx, "No files found");
+    },
+  });
+
+}
