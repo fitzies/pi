@@ -4,7 +4,6 @@ Adds:
 
 - `/pr [commit message]` — stages all files, commits, pushes, creates a PR if needed, then shows live GitHub PR/checks.
 - `/merge [number|url|branch] [--squash|--merge|--rebase] [--auto] [--delete-branch] [--admin]` — checks merge readiness, then merges after Enter confirmation.
-- `/yeet` — stages everything, makes one concise commit, and pushes the current branch.
 - `/push` — commits and pushes only this chat/session's changes, recommending/applying logical commit splits so changes are easier to debug later.
 - `/abandon [--force]` — deletes this `~/workbranches/*` worktree, deletes its local branch, then closes the current cmux workspace.
 

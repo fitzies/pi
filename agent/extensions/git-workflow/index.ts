@@ -5,19 +5,6 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { Key, matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-const YEET_PROMPT = `Commit and push all current repository changes.
-
-Steps:
-1. Run \`git add -A\`.
-2. Inspect the staged diff.
-3. Generate a concise commit message that accurately summarizes the changes.
-4. Commit with that message.
-5. Push to the current branch's remote.
-   - If the branch has no upstream, push with upstream tracking.
-   - If there is no git remote, commit only and say there was no remote to push to.
-
-Keep the final response short.`;
-
 const PUSH_PROMPT = `Commit and push only the changes you made in this chat/session. Do not create a PR or merge anything.
 
 Important safety rule:
@@ -848,13 +835,6 @@ export default async function prMergeExtension(pi: ExtensionAPI): Promise<void> 
 				return;
 			}
 			await showMergeUi(pi, ctx, parsed.options);
-		},
-	});
-
-	pi.registerCommand("yeet", {
-		description: "Add, commit, and push all repo changes",
-		handler: async (_args, ctx) => {
-			sendPromptCommand(pi, ctx, "yeet", YEET_PROMPT);
 		},
 	});
 
