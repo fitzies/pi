@@ -51,7 +51,6 @@ declare global {
     | undefined;
   var __piRequestFooterRender: (() => void) | undefined;
   var __piSubagentCounts: Record<string, number> | undefined;
-  var __piTalkMode: boolean | undefined;
   var __piBetterGptFastStatus: "fast" | "fast requested" | undefined;
 }
 
@@ -435,16 +434,24 @@ function queueTitleGenerationInBackground(pi: ExtensionAPI, ctx: ExtensionContex
   void titleInFlight.catch(() => undefined);
 }
 
-function formatModelLabel(modelId: string | undefined, thinkingLevel?: string, fastStatus?: string) {
-  if (!modelId) return "no model";
+function formatModelLabel(modelId: string | undefined) {
+  if (!modelId) return { text: "no model", color: "dim" as const };
   const shortId = modelId.split("/").pop() ?? modelId;
-  const model = shortId
+  const knownModels: Record<string, { text: string; color: "warning" | "success" | "luna" }> = {
+    "gpt-5.6-sol": { text: "☀️ 5.6 sol", color: "warning" },
+    "gpt-5.6-terra": { text: "🌍 5.6 terra", color: "success" },
+    "gpt-5.6-luna": { text: "🌑 5.6 luna", color: "luna" },
+  };
+  const known = knownModels[shortId.toLowerCase()];
+  if (known) return known;
+
+  const text = shortId
     .replace(/(\d)-(\d)/g, "$1.$2")
     .replace(/_+/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
-  return [model || "no model", thinkingLevel?.toLowerCase(), fastStatus].filter(Boolean).join(" · ");
+  return { text: text || "no model", color: "dim" as const };
 }
 
 async function updateChatGptUsage(ctx: ExtensionContext) {
@@ -514,18 +521,17 @@ function formatTps(snapshot: TpsSnapshot | undefined, theme: any) {
 }
 
 const INPUT_PLACEHOLDER = "Plan, search, build anything";
-const TALK_INPUT_PLACEHOLDER = "Discuss without changing files";
 
 function inputPlaceholder() {
-  return globalThis.__piTalkMode ? TALK_INPUT_PLACEHOLDER : INPUT_PLACEHOLDER;
+  return INPUT_PLACEHOLDER;
 }
 
 function inputPrompt() {
-  return globalThis.__piTalkMode ? "? " : "> ";
+  return "> ";
 }
 
 function promptColor() {
-  return globalThis.__piTalkMode ? "warning" : "accent";
+  return "accent";
 }
 const INPUT_PADDING_X = 1;
 const INPUT_PADDING_TOP = 0;
@@ -583,8 +589,14 @@ function formatTopStatusLine(
   sessionStartedAt: number,
   theme: AppTheme,
 ) {
-  const modelText = formatModelLabel(ctx.model?.id, pi.getThinkingLevel?.() ?? undefined, undefined);
-  const left = theme.fg("dim", modelText);
+  const model = formatModelLabel(ctx.model?.id);
+  const thinking = pi.getThinkingLevel?.()?.toLowerCase();
+  const modelText = model.color === "luna"
+    ? `\x1b[38;2;92;111;148m${model.text}\x1b[0m`
+    : theme.fg(model.color, model.text);
+  const left = [modelText, thinking && theme.fg("dim", thinking)]
+    .filter(Boolean)
+    .join(theme.fg("dim", " · "));
   const elapsed = theme.fg("dim", `[${formatElapsedDuration(Date.now() - sessionStartedAt)}]`);
   const tps = formatTps(tpsSnapshot, theme);
   const right = [tps, elapsed].filter((part): part is string => Boolean(part)).join(theme.fg("dim", " · "));

@@ -85,31 +85,6 @@ function loadAgents(): Agent[] {
     .filter((a) => a.name);
 }
 
-function agentsWithCapability(agents: Agent[], capability: string): Agent[] {
-  return agents.filter((a) => a.capabilities.includes(capability));
-}
-
-function firstAgentName(agents: Agent[], capability: string, fallback: string): string {
-  return agentsWithCapability(agents, capability)[0]?.name || agents.find((a) => a.name === fallback)?.name || fallback;
-}
-
-function buildSubagentGuidance(agents: Agent[]): string[] {
-  const researcher = firstAgentName(agents, "research", "researcher");
-  const scout = firstAgentName(agents, "scout", "scout");
-  const reviewer = firstAgentName(agents, "review", "reviewer");
-  const available = agents.map((a) => `${a.name}${a.capabilities.length ? ` [${a.capabilities.join(", ")}]` : ""}`).join("; ");
-
-  return [
-    `Available subagents are loaded dynamically from ${AGENTS_DIR}: ${available || "none"}.`,
-    `Use the ${researcher} subagent first for web research, current information, external docs, package investigation, or source-backed answers. Do not perform main-context search/scrape for those tasks unless the subagent result is insufficient or the task is a narrow known-URL lookup.`,
-    `Use the ${scout} subagent first for broad/unfamiliar codebase reconnaissance, finding where functionality lives, architecture tracing, comparing patterns across files, or multi-file search. Do not perform main-context grep/find for those tasks unless the subagent result is insufficient or the task is a narrow known-file lookup.`,
-    `Use the ${reviewer} subagent when the user asks to review, validate, critique, audit, sanity-check, or assess a plan/implementation/amendment.`,
-    "Direct parent reads are fine for simple known files, known URLs, small lookups, implementation work, and focused validation.",
-    "Optimize for preserving main context: delegate discovery/research/review before doing broad investigation inline.",
-    "Subagents do not inherit context by default; include the necessary task context. The reviewer agent is automatically given a compact transcript of the active conversation branch.",
-  ];
-}
-
 function resolvePi(): { command: string; args: string[] } {
   const entry = process.argv[1];
   if (entry) {
@@ -272,13 +247,6 @@ async function runAgent(agent: Agent, task: string, cwd: string, signal?: AbortS
 
 export default function (pi: ExtensionAPI) {
   const agents = loadAgents();
-
-  pi.on("before_agent_start", async (event) => {
-    const currentGuidance = buildSubagentGuidance(loadAgents());
-    return {
-      systemPrompt: `${event.systemPrompt}\n\nSubagent delegation guidance:\n- ${currentGuidance.join("\n- ")}`,
-    };
-  });
 
   pi.registerTool({
     name: "subagent",

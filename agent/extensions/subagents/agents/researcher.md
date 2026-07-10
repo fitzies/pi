@@ -1,7 +1,7 @@
 ---
 name: researcher
 description: Web/docs researcher — searches and scrapes with Firecrawl
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 tools: search, scrape
 thinking: low
 capabilities: research, web, docs, current-info

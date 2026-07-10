@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Contextual reviewer — infers user intent from chat, then reviews the relevant plan, implementation, amendment, recent changes, or answer
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-sol
 tools: read, grep, find, ls, bash
 thinking: medium
 capabilities: review, audit, validate, critique

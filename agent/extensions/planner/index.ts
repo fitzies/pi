@@ -22,14 +22,6 @@ type PlanMeta = {
 
 type Index = { plans: PlanMeta[]; activeBySession: Record<string, string> };
 
-declare global {
-  var __piTalkMode: boolean | undefined;
-  var __piRequestFooterRender: (() => void) | undefined;
-}
-
-const TALK_MODE_INSTRUCTION = "For your next response only: discuss concisely without implementing anything, editing files, writing files, or running mutating commands. You may use read-only tools/commands to investigate the codebase when helpful.";
-const THINKING_LEVELS = ["low", "high", "xhigh"] as const;
-
 function slug(s: string) {
   return (s || "plan").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) || "plan";
 }
@@ -61,33 +53,6 @@ function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
 
 export default function(pi: ExtensionAPI) {
   registerHandoff(pi);
-
-  pi.registerShortcut("shift+tab", {
-    description: "Toggle talk mode",
-    handler: async (ctx) => {
-      globalThis.__piTalkMode = !globalThis.__piTalkMode;
-      globalThis.__piRequestFooterRender?.();
-      ctx.ui.notify(`Talk mode ${globalThis.__piTalkMode ? "on" : "off"}`, "info");
-    },
-  });
-
-  pi.registerShortcut("ctrl+shift+p", {
-    description: "Cycle thinking level: low/high/xhigh",
-    handler: async (ctx) => {
-      const current = pi.getThinkingLevel?.() ?? "low";
-      const index = THINKING_LEVELS.indexOf(current as typeof THINKING_LEVELS[number]);
-      const next = THINKING_LEVELS[(index + 1) % THINKING_LEVELS.length]!;
-      pi.setThinkingLevel?.(next as any);
-      ctx.ui.notify(`Thinking: ${next}`, "info");
-    },
-  });
-
-  pi.on("input", async (event) => {
-    if (!globalThis.__piTalkMode) return { action: "continue" };
-    if (event.source === "extension") return { action: "continue" };
-    if (!event.text.trim()) return { action: "continue" };
-    return { action: "transform", text: `${TALK_MODE_INSTRUCTION}\n\n${event.text}`, images: event.images };
-  });
 
   pi.registerTool({
     name: "save_plan",
@@ -131,14 +96,6 @@ export default function(pi: ExtensionAPI) {
       const goal = args?.trim() || "the user's requested change";
       await ctx.waitForIdle();
       pi.sendUserMessage(`Create a concise implementation plan for: ${goal}\n\nDo not implement or write code. Investigate the codebase as needed. When the plan is ready, call save_plan with a short title and the complete markdown plan. Keep it concise.`);
-    }
-  });
-
-  pi.registerCommand("talk", {
-    description: "Discuss concisely without implementing or editing files",
-    handler: async (args, ctx) => {
-      await ctx.waitForIdle();
-      pi.sendUserMessage(`${TALK_MODE_INSTRUCTION}\n\n${args || "Let's discuss."}`);
     }
   });
 

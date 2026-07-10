@@ -1,7 +1,7 @@
 ---
 name: scout
 description: Fast read-only codebase recon — finds files, patterns, and architecture
-model: openai-codex/gpt-5.5
+model: openai-codex/gpt-5.6-terra
 tools: read, fffind, ffgrep, fff-multi-grep, grep, find, ls
 thinking: low
 capabilities: scout, codebase-recon, architecture, discovery
