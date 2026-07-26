@@ -1,5 +1,4 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerAbandonCommand } from "./abandon";
 import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -822,8 +821,6 @@ export default async function prMergeExtension(pi: ExtensionAPI): Promise<void> 
 		description: "Stage, commit, push, create/open PR, and show live checks",
 		handler: prHandler,
 	});
-
-	registerAbandonCommand(pi);
 
 	pi.registerCommand("merge", {
 		description: "Merge the current GitHub PR after checking status",
