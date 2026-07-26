@@ -2,14 +2,14 @@
   "lastChangelogVersion": "0.80.6",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.6-sol",
-  "defaultThinkingLevel": "medium",
+  "defaultThinkingLevel": "low",
   "enabledModels": [
     "openai-codex/gpt-5.6-luna",
     "openai-codex/gpt-5.6-sol",
     "openai-codex/gpt-5.6-terra"
   ],
   "enableInstallTelemetry": false,
-  "theme": "gruvbox-dark",
+  "theme": "catppuccin-mocha",
   "terminal": {
     "imageWidthCells": 60,
     "showImages": true,
