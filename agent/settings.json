@@ -28,8 +28,7 @@
   "packages": [
     "npm:@ff-labs/pi-fff",
     "npm:@juicesharp/rpiv-btw",
-    "npm:pi-agent-browser-native",
-    "npm:pi-subagents"
+    "npm:pi-agent-browser-native"
   ],
   "warnings": {
     "anthropicExtraUsage": false
