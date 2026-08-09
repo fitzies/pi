@@ -13,8 +13,6 @@ agent/logs/
 agent/cache/
 agent/tmp/
 agent/run-processes.json
-agent/run-history.jsonl
-agent/missions/
 agent/trust.json
 .pi/browser-test/
 
