@@ -164,6 +164,7 @@
         },
         "compat": {
           "supportsOpenAIGrammarTools": true,
+          "supportsAdditionalTools": true,
           "supportsToolSearch": true
         }
       },
@@ -202,6 +203,7 @@
         },
         "compat": {
           "supportsOpenAIGrammarTools": true,
+          "supportsAdditionalTools": true,
           "supportsToolSearch": true
         }
       },
@@ -240,10 +242,13 @@
         },
         "compat": {
           "supportsOpenAIGrammarTools": true,
+          "supportsAdditionalTools": true,
           "supportsToolSearch": true
         }
       }
     ],
-    "checkedAt": 1786217601713
+    "checkedAt": 1787125031610,
+    "lastModified": 1787057799000,
+    "etag": "W/\"7572a78e60b78526600ed2a9b74b579d\""
   }
 }
